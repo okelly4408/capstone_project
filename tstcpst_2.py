@@ -16,19 +16,19 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from IPython.display import HTML
 
-dataroot = "Desktop/wikiart/portraits/"
+dataroot = "abstract/small_abstract"
 n_dl_thrds = 2
-batch_size = 128
-image_size = 64
+batch_size = 16
+image_size = 128
 #num channels = number of color components per pixel
 nc = 3
 # size of input latent vector
 nz = 100
 # feature map size for generator
-ngf = 64
+ngf = 128
 # feature map size for discriminator
-ndf = 64
-num_epochs = 2
+ndf = 128
+num_epochs = 1
 # learning rate
 lr = 0.0002
 # see Adam's optimizers for more 
@@ -42,28 +42,31 @@ class gen(nn.Module):
     def __init__(self, ngpu):
         super(gen, self).__init__()
         self.ngpu = ngpu
-        #set up layers
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d( nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.ConvTranspose2d(     nz, ngf * 16, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(ngf * 16),
+            nn.ReLU(True),
+            # state size. (ngf*16) x 4 x 4
+            nn.ConvTranspose2d(ngf * 16, ngf * 8, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 8),
             nn.ReLU(True),
-            # state size. (ngf*8) x 4 x 4
+            # state size. (ngf*8) x 8 x 8
             nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 4),
             nn.ReLU(True),
-            # state size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d( ngf * 4, ngf * 2, 4, 2, 1, bias=False),
+            # state size. (ngf*4) x 16 x 16 
+            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
-            # state size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d( ngf * 2, ngf, 4, 2, 1, bias=False),
+            # state size. (ngf*2) x 32 x 32
+            nn.ConvTranspose2d(ngf * 2,     ngf, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf),
             nn.ReLU(True),
-            # state size. (ngf) x 32 x 32
-            nn.ConvTranspose2d( ngf, nc, 4, 2, 1, bias=False),
+            # state size. (ngf) x 64 x 64
+            nn.ConvTranspose2d(    ngf,      nc, 4, 2, 1, bias=False),
             nn.Tanh()
-            # state size. (nc) x 64 x 64
+            # state size. (nc) x 128 x 128
         )
 
     def forward(self, input):
@@ -72,28 +75,31 @@ class disc(nn.Module):
     def __init__(self, ngpu):
         super(disc, self).__init__()
         self.ngpu = ngpu
-        #set up layers
         self.main = nn.Sequential(
-            # input is (nc) x 64 x 64
-            nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
+            # input is (nc) x 128 x 128
+            nn.Conv2d(nc, ndf, 4, stride=2, padding=1, bias=False), 
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf) x 32 x 32
-            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
+            # state size. (ndf) x 64 x 64
+            nn.Conv2d(ndf, ndf * 2, 4, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(ndf * 2),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*2) x 16 x 16
-            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
+            # state size. (ndf*2) x 32 x 32
+            nn.Conv2d(ndf * 2, ndf * 4, 4, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(ndf * 4),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*4) x 8 x 8
-            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
+            # state size. (ndf*4) x 16 x 16 
+            nn.Conv2d(ndf * 4, ndf * 8, 4, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
+            # state size. (ndf*8) x 8 x 8
+            nn.Conv2d(ndf * 8, ndf * 16, 4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(ndf * 16),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*16) x 4 x 4
+            nn.Conv2d(ndf * 16, 1, 4, stride=1, padding=0, bias=False),
             nn.Sigmoid()
+            # state size. 1
         )
-
     def forward(self, input):
         return self.main(input)
 #end classes
@@ -124,7 +130,7 @@ def run():
 	plt.figure(figsize=(8,8))
 	plt.axis("off")
 	plt.title("Training Images")
-	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(),(1,2,0)))
+	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=2, normalize=True).cpu(),(1,2,0)))
 	plt.show()
 	netG = gen(ngpu).to(device)
 	if ((device.type == 'cuda') and (ngpu > 1)):
@@ -143,6 +149,7 @@ def run():
 	optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
 	optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
 	img_list = []
+	img_list_2 = []
 	G_losses = []
 	D_losses = []
 	iters = 0
@@ -172,7 +179,7 @@ def run():
 	        errG.backward()
 	        D_G_z2 = output.mean().item()
 	        optimizerG.step()
-	        if i % 50 == 0:
+	        if i % 8 == 0:
 	            print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
 	                  % (epoch, num_epochs, i, len(dataloader),
 	                     errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
@@ -184,7 +191,9 @@ def run():
 	        if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
 	            with torch.no_grad():
 	                fake = netG(fixed_noise).detach().cpu()
+	            img_list_2.append(fake)
 	            img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+	            vutils.save_image(vutils.make_grid(fake[0], padding=2, normalize=True), "../nnimages_2/image" + str(iters) + ".jpg")
 	        iters += 1
 	real_batch = next(iter(dataloader))
 
@@ -193,13 +202,18 @@ def run():
 	plt.subplot(1,2,1)
 	plt.axis("off")
 	plt.title("Real Images")
-	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:64], padding=5, normalize=True).cpu(),(1,2,0)))
+	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=5, normalize=True).cpu(),(1,2,0)))
 	# Plot the fake images from the last epoch
 	plt.subplot(1,2,2)
 	plt.axis("off")
 	plt.title("Fake Images")
 	plt.imshow(np.transpose(img_list[-1],(1,2,0)))
+	fakes_2 = img_list[-1]
+	for img_nn in fakes_2:
+		vutils.save_image(vutils.make_grid(img_nn, padding=2, normalize=True), "../nnimages_2/image" + str(random.random()) + ".jpg")
 	plt.show()
 if __name__ == '__main__':
     run()
+
+
 
