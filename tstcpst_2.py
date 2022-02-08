@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from IPython.display import HTML
 
-dataroot = "abstract/small_abstract"
+dataroot = "../Desktop/abstract/small_abstract"
 n_dl_thrds = 2
 batch_size = 16
 image_size = 128
@@ -112,26 +112,8 @@ def weights_init(m):
     elif classname.find('BatchNorm') != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
-def run():
-	random.seed(2)
-	torch.manual_seed(2)
-	dataset = dset.ImageFolder(root=dataroot,
-	                           transform=transforms.Compose([
-	                               transforms.Resize(image_size),
-	                               transforms.CenterCrop(image_size),
-	                               transforms.ToTensor(),
-	                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-	                           ]))
-	dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-	                                         shuffle=True, num_workers=n_dl_thrds)
-	device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-	print(device)
-	real_batch = next(iter(dataloader))
-	plt.figure(figsize=(8,8))
-	plt.axis("off")
-	plt.title("Training Images")
-	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=2, normalize=True).cpu(),(1,2,0)))
-	plt.show()
+#returns generator network only for now
+def train_GAN(device, dataloader):
 	netG = gen(ngpu).to(device)
 	if ((device.type == 'cuda') and (ngpu > 1)):
 		netG = nn.DataParallel(netG, list(range(ngpu)))
@@ -155,29 +137,48 @@ def run():
 	iters = 0
 	for epoch in range(num_epochs):
 	    for i, data in enumerate(dataloader, 0):
+
+	    	#Update discriminator
+	    	#training it with a batch from training set
 	        netD.zero_grad()
 	        real_cpu = data[0].to(device)
 	        b_size = real_cpu.size(0)
 	        label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
+	        #pass batch of real images
 	        output = netD(real_cpu).view(-1)
+	        #calculate loss
 	        errD_real = criterion(output, label)
+	        #calculate gradients
 	        errD_real.backward()
 	        D_x = output.mean().item()
+
+	        #train discriminator with output from generator
 	        noise = torch.randn(b_size, nz, 1, 1, device=device)
+	        #generates batch of fake images
 	        fake = netG(noise)
 	        label.fill_(fake_label)
+	        #classify the generated images
 	        output = netD(fake.detach()).view(-1)
+	        #discriminators loss on generated images
 	        errD_fake = criterion(output, label)
+	        #gradients for discriminator and sum with gradients from real batch
 	        errD_fake.backward()
 	        D_G_z1 = output.mean().item()
 	        errD = errD_real + errD_fake
+	        #updates disc
 	        optimizerD.step()
+
+	        #Update generator
 	        netG.zero_grad()
 	        label.fill_(real_label)  # fake labels are real for generator cost
+	        #forward pass fake images again through discriminator
 	        output = netD(fake).view(-1)
+	        #calculates gen loss on disc pass
 	        errG = criterion(output, label)
+	        #gradients for gen
 	        errG.backward()
 	        D_G_z2 = output.mean().item()
+	        #update generator
 	        optimizerG.step()
 	        if i % 8 == 0:
 	            print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
@@ -188,30 +189,46 @@ def run():
 	        G_losses.append(errG.item())
 	        D_losses.append(errD.item())
 	        # Check how the generator is doing by saving G's output on fixed_noise
-	        if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
-	            with torch.no_grad():
-	                fake = netG(fixed_noise).detach().cpu()
-	            img_list_2.append(fake)
-	            img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
-	            vutils.save_image(vutils.make_grid(fake[0], padding=2, normalize=True), "../nnimages_2/image" + str(iters) + ".jpg")
+	        #if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
+	        #    with torch.no_grad():
+	        #        fake = netG(fixed_noise).detach().cpu()
+	        #    img_list_2.append(fake)
+	        #    img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 	        iters += 1
+	return netG
+def run():
+	random.seed(2)
+	torch.manual_seed(2)
+	dataset = dset.ImageFolder(root=dataroot,
+	                           transform=transforms.Compose([
+	                               transforms.Resize(image_size),
+	                               transforms.CenterCrop(image_size),
+	                               transforms.ToTensor(),
+	                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+	                           ]))
+	dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+	                                         shuffle=True, num_workers=n_dl_thrds)
+	device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
 	real_batch = next(iter(dataloader))
-
-	# Plot the real images
-	plt.figure(figsize=(15,15))
-	plt.subplot(1,2,1)
+	plt.figure(figsize=(8,8))
 	plt.axis("off")
-	plt.title("Real Images")
-	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=5, normalize=True).cpu(),(1,2,0)))
-	# Plot the fake images from the last epoch
-	plt.subplot(1,2,2)
-	plt.axis("off")
-	plt.title("Fake Images")
-	plt.imshow(np.transpose(img_list[-1],(1,2,0)))
-	fakes_2 = img_list[-1]
-	for img_nn in fakes_2:
-		vutils.save_image(vutils.make_grid(img_nn, padding=2, normalize=True), "../nnimages_2/image" + str(random.random()) + ".jpg")
+	plt.title("Training Images")
+	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=2, normalize=True).cpu(),(1,2,0)))
 	plt.show()
+	generator = train_GAN(device, dataloader)
+	for i in range(64):
+		fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+		nn_img = generator(noise).detach().cpu()
+		vutils.save_image(vutils.make_grid(nn_img[0], padding=2, normalize=True), "nnimages_2/image" + str(random.random()) + ".jpg")
+	# Plot the fake images from the last epoch
+	#plt.subplot(1,2,2)
+	#plt.axis("off")
+	#plt.title("Fake Images")
+	#plt.imshow(np.transpose(img_list[-1],(1,2,0)))
+	#fakes_2 = img_list[-1]
+	#for img_nn in fakes_2:
+	#	vutils.save_image(vutils.make_grid(img_nn, padding=2, normalize=True), "../nnimages_2/image" + str(random.random()) + ".jpg")
+	#plt.show()
 if __name__ == '__main__':
     run()
 
