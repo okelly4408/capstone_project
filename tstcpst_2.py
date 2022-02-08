@@ -28,7 +28,7 @@ nz = 100
 ngf = 128
 # feature map size for discriminator
 ndf = 128
-num_epochs = 1
+num_epochs = 600
 # learning rate
 lr = 0.0002
 # see Adam's optimizers for more 
@@ -125,7 +125,7 @@ def train_GAN(device, dataloader):
 	netD.apply(weights_init)
 	print(netD)
 	criterion = nn.BCELoss()
-	fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+	fixed_noise = torch.randn(128, nz, 1, 1, device=device)
 	real_label = 1.
 	fake_label = 0.
 	optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
@@ -208,18 +208,21 @@ def run():
 	                           ]))
 	dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
 	                                         shuffle=True, num_workers=n_dl_thrds)
+	dataloader_2 = torch.utils.data.DataLoader(dataset, batch_size=32,
+	                                         shuffle=True, num_workers=n_dl_thrds)
 	device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-	real_batch = next(iter(dataloader))
-	plt.figure(figsize=(8,8))
+	real_batch = next(iter(dataloader_2))
+	plt.figure(figsize=(16,16))
 	plt.axis("off")
 	plt.title("Training Images")
 	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=2, normalize=True).cpu(),(1,2,0)))
 	plt.show()
 	generator = train_GAN(device, dataloader)
-	for i in range(64):
-		fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+	torch.save(generator.state_dict(), 'gen.pt')
+	for i in range(128):
+		noise = torch.randn(128, nz, 1, 1, device=device)
 		nn_img = generator(noise).detach().cpu()
-		vutils.save_image(vutils.make_grid(nn_img[0], padding=2, normalize=True), "nnimages_2/image" + str(random.random()) + ".jpg")
+		vutils.save_image(vutils.make_grid(nn_img[0], padding=2, normalize=True), 'nnimages/'+str(i)+'image' + str(random.random()) + '.jpg')
 	# Plot the fake images from the last epoch
 	#plt.subplot(1,2,2)
 	#plt.axis("off")
