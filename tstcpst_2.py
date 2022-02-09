@@ -17,24 +17,27 @@ import matplotlib.animation as animation
 from IPython.display import HTML
 
 dataroot = "../Desktop/abstract/small_abstract"
-n_dl_thrds = 2
-batch_size = 16
+n_dl_thrds = 3
+batch_size = 64
 image_size = 128
 #num channels = number of color components per pixel
 nc = 3
 # size of input latent vector
 nz = 100
 # feature map size for generator
-ngf = 128
+ngf = 8
 # feature map size for discriminator
-ndf = 128
-num_epochs = 600
+ndf = 8
+num_epochs = 200
 # learning rate
-lr = 0.0002
+lr = 0.0003
 # see Adam's optimizers for more 
 beta1 = 0.5
+beta2 = 0.999
 # Number of GPUs available. Use 0 for CPU mode.
 ngpu = 1
+
+noise_level = 0.1
 
 
 #begin classes of generator and discriminator. Basic for now but will add to later.
@@ -44,27 +47,29 @@ class gen(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(     nz, ngf * 16, 4, 1, 0, bias=False),
+            nn.utils.spectral_norm(nn.ConvTranspose2d(nz, ngf * 16, 4, 1, 0, bias=False)),
+            nn.LeakyReLU(0.2, True),
             nn.BatchNorm2d(ngf * 16),
-            nn.ReLU(True),
+
             # state size. (ngf*16) x 4 x 4
-            nn.ConvTranspose2d(ngf * 16, ngf * 8, 4, 2, 1, bias=False),
+            nn.utils.spectral_norm(nn.ConvTranspose2d(ngf * 16, ngf * 8, 4, 2, 1, bias=False)),
+            nn.LeakyReLU(0.2, True),
             nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
+
             # state size. (ngf*8) x 8 x 8
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
+            nn.utils.spectral_norm(nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False)),
+            nn.LeakyReLU(0.2, True),
             nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
             # state size. (ngf*4) x 16 x 16 
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
+            nn.utils.spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False)),
+            nn.LeakyReLU(0.2, True),
             nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
             # state size. (ngf*2) x 32 x 32
-            nn.ConvTranspose2d(ngf * 2,     ngf, 4, 2, 1, bias=False),
+            nn.utils.spectral_norm(nn.ConvTranspose2d(ngf * 2,     ngf, 4, 2, 1, bias=False)),
+            nn.LeakyReLU(0.2, True),
             nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
             # state size. (ngf) x 64 x 64
-            nn.ConvTranspose2d(    ngf,      nc, 4, 2, 1, bias=False),
+            nn.utils.spectral_norm(nn.ConvTranspose2d(    ngf,      nc, 4, 2, 1, bias=False)),
             nn.Tanh()
             # state size. (nc) x 128 x 128
         )
@@ -77,26 +82,30 @@ class disc(nn.Module):
         self.ngpu = ngpu
         self.main = nn.Sequential(
             # input is (nc) x 128 x 128
-            nn.Conv2d(nc, ndf, 4, stride=2, padding=1, bias=False), 
+            nn.utils.spectral_norm(nn.Conv2d(nc, ndf, 4, stride=2, padding=1, bias=False)),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf) x 64 x 64
-            nn.Conv2d(ndf, ndf * 2, 4, stride=2, padding=1, bias=False),
+            nn.utils.spectral_norm(nn.Conv2d(ndf, ndf * 2, 4, stride=2, padding=1, bias=False)),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(ndf * 2),
-            nn.LeakyReLU(0.2, inplace=True),
+            
             # state size. (ndf*2) x 32 x 32
-            nn.Conv2d(ndf * 2, ndf * 4, 4, stride=2, padding=1, bias=False),
+            nn.utils.spectral_norm(nn.Conv2d(ndf * 2, ndf * 4, 4, stride=2, padding=1, bias=False)),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(ndf * 4),
-            nn.LeakyReLU(0.2, inplace=True),
+            
             # state size. (ndf*4) x 16 x 16 
-            nn.Conv2d(ndf * 4, ndf * 8, 4, stride=2, padding=1, bias=False),
+            nn.utils.spectral_norm(nn.Conv2d(ndf * 4, ndf * 8, 4, stride=2, padding=1, bias=False)),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.BatchNorm2d(ndf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
+            
             # state size. (ndf*8) x 8 x 8
-            nn.Conv2d(ndf * 8, ndf * 16, 4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ndf * 16),
+            nn.utils.spectral_norm(nn.Conv2d(ndf * 8, ndf * 16, 4, stride=2, padding=1, bias=False)),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(ndf * 16),
+            
             # state size. (ndf*16) x 4 x 4
-            nn.Conv2d(ndf * 16, 1, 4, stride=1, padding=0, bias=False),
+            nn.utils.spectral_norm(nn.Conv2d(ndf * 16, 1, 4, stride=1, padding=0, bias=False)),
             nn.Sigmoid()
             # state size. 1
         )
@@ -189,16 +198,19 @@ def train_GAN(device, dataloader):
 	        G_losses.append(errG.item())
 	        D_losses.append(errD.item())
 	        # Check how the generator is doing by saving G's output on fixed_noise
-	        #if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
-	        #    with torch.no_grad():
-	        #        fake = netG(fixed_noise).detach().cpu()
-	        #    img_list_2.append(fake)
-	        #    img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+	        if (iters % 25 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
+	            with torch.no_grad():
+	                fake = netG(fixed_noise).detach().cpu()
+	            vutils.save_image(vutils.make_grid(fake[0], padding=2, normalize=True), 'nnimages/'+str(i)+'image' + str(random.random()) + '.jpg')
 	        iters += 1
+	torch.save({
+		'netG_state_dict': netG.state_dict(),
+		'netD_state_dict': netD.state_dict(),
+		'optimizerG_state_dict': optimizerG.state_dict(),
+		'optimizerD_state_dict': optimizerD.state_dict()
+		}, 'model.tar')
 	return netG
 def run():
-	random.seed(2)
-	torch.manual_seed(2)
 	dataset = dset.ImageFolder(root=dataroot,
 	                           transform=transforms.Compose([
 	                               transforms.Resize(image_size),
@@ -218,7 +230,7 @@ def run():
 	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=2, normalize=True).cpu(),(1,2,0)))
 	plt.show()
 	generator = train_GAN(device, dataloader)
-	torch.save(generator.state_dict(), 'gen.pt')
+	torch.save(generator.state_dict(), 'gen_1.pt')
 	for i in range(128):
 		noise = torch.randn(128, nz, 1, 1, device=device)
 		nn_img = generator(noise).detach().cpu()
