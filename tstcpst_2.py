@@ -25,12 +25,12 @@ nc = 3
 # size of input latent vector
 nz = 100
 # feature map size for generator
-ngf = 8
+ngf = 32
 # feature map size for discriminator
-ndf = 8
-num_epochs = 200
+ndf = 32
+num_epochs = 1000
 # learning rate
-lr = 0.0003
+lr = 0.0001
 # see Adam's optimizers for more 
 beta1 = 0.5
 beta2 = 0.999
@@ -137,8 +137,8 @@ def train_GAN(device, dataloader):
 	fixed_noise = torch.randn(128, nz, 1, 1, device=device)
 	real_label = 1.
 	fake_label = 0.
-	optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, 0.999))
-	optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, 0.999))
+	optimizerD = optim.Adam(netD.parameters(), lr=lr, betas=(beta1, beta2))
+	optimizerG = optim.Adam(netG.parameters(), lr=lr, betas=(beta1, beta2))
 	img_list = []
 	img_list_2 = []
 	G_losses = []
@@ -201,14 +201,14 @@ def train_GAN(device, dataloader):
 	        if (iters % 25 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
 	            with torch.no_grad():
 	                fake = netG(fixed_noise).detach().cpu()
-	            vutils.save_image(vutils.make_grid(fake[0], padding=2, normalize=True), 'nnimages/'+str(i)+'image' + str(random.random()) + '.jpg')
+	            vutils.save_image(vutils.make_grid(fake[0], padding=2, normalize=True), 'nnimages_prog/'+str(iters)+'image' + str(random.random()) + '.jpg')
 	        iters += 1
 	torch.save({
 		'netG_state_dict': netG.state_dict(),
 		'netD_state_dict': netD.state_dict(),
 		'optimizerG_state_dict': optimizerG.state_dict(),
 		'optimizerD_state_dict': optimizerD.state_dict()
-		}, 'model.tar')
+		}, 'model_1000.tar')
 	return netG
 def run():
 	dataset = dset.ImageFolder(root=dataroot,
@@ -230,11 +230,11 @@ def run():
 	plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(device)[:128], padding=2, normalize=True).cpu(),(1,2,0)))
 	plt.show()
 	generator = train_GAN(device, dataloader)
-	torch.save(generator.state_dict(), 'gen_1.pt')
+	torch.save(generator.state_dict(), 'gen_1_1000.pt')
 	for i in range(128):
 		noise = torch.randn(128, nz, 1, 1, device=device)
 		nn_img = generator(noise).detach().cpu()
-		vutils.save_image(vutils.make_grid(nn_img[0], padding=2, normalize=True), 'nnimages/'+str(i)+'image' + str(random.random()) + '.jpg')
+		vutils.save_image(vutils.make_grid(nn_img[0], padding=2, normalize=True), 'nnimages_2/z_'+str(i)+'image' + str(random.random()) + '.jpg')
 	# Plot the fake images from the last epoch
 	#plt.subplot(1,2,2)
 	#plt.axis("off")
